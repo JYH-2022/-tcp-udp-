@@ -1,12 +1,12 @@
 #include <sys/socket.h>   // socket, bind, listen, accept, connect
-#include <sys/time.h>
+#include <sys/time.h>     // gettimeofday
 #include <netinet/in.h>   // sockaddr_in 구조체
 #include <arpa/inet.h>    // inet_addr, htons 같은 주소 변환
-#include <unistd.h>       // close, read, write
+#include <unistd.h>       // close, read, write, usleep
 #include <string.h>       // memset, strlen
 #include <stdio.h>        
-int main() {
 
+int main() {
     // 1. socket() - 소켓 생성
     // IPv4, TCP 방식의 소켓을 만들고 sock에 소켓 번호(파일 디스크립터)를 저장
     int sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -25,23 +25,24 @@ int main() {
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP
 
     // 3. connect() - 서버에 연결 요청
-    // 위에서 채운 주소로 서버에 연결 시도
     // result에 결과값 저장 → 성공하면 0, 실패하면 -1 반환
     int result = connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    if (result < 0) 
-    {
+    if (result < 0) {
         printf("connect failed\n");
         return -2;
     }
 
     // 4. send() - 속도 조절하면서 데이터 전송
-    int speed = 2000;  // 500, 1000, 2000 으로 바꿔가며 테스트
+    int speed;
+    printf("전송 속도 입력 (500/1000/2000): ");
+    scanf("%d", &speed);
+
     char buf[2000];
-    memset(buf, 'A', sizeof(buf));
+    memset(buf, 'A', sizeof(buf));  // buf를 'A'로 채움 (임의의 데이터)
     int total_bytes = 0;
 
-    struct timeval start, end;
-    gettimeofday(&start, NULL);  // 전송 시작 시간
+    struct timeval start, now;
+    gettimeofday(&start, NULL);  // 전송 시작 시간 기록
 
     for (int i = 0; i < 10; i++) {  // 10초 동안 전송
         int send_result = send(sock, buf, speed, 0);
@@ -50,17 +51,26 @@ int main() {
             return -3;
         }
         total_bytes += speed;
-        sleep(1);  // 1초 대기 → 초당 speed bytes 전송
+
+        // 목표 시간까지 정확하게 대기
+        // sleep(1) 대신 usleep으로 오차 방지
+        gettimeofday(&now, NULL);
+        double elapsed = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;
+        double target = (i + 1) * 1.0;  // 목표 시간 (1초, 2초, 3초...)
+        if (target > elapsed) {
+            usleep((target - elapsed) * 1000000);  // 남은 시간만큼 대기
+        }
     }
 
-    gettimeofday(&end, NULL);  // 전송 종료 시간
-    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
-    printf("경과 시간: %.2f초\n", elapsed);
+    // TCP는 close()하면 서버가 자동으로 연결 종료를 알 수 있어서 END 신호 필요없음
+    // close() 하면 서버의 recv()가 0을 반환해서 서버도 종료됨
+    gettimeofday(&now, NULL);  // 전송 종료 시간 기록
+    double elapsed = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;
     printf("총 전송 바이트: %d\n", total_bytes);
+    printf("경과 시간: %.2f초\n", elapsed);
     printf("throughput: %.2f bytes/s\n", total_bytes / elapsed);
-        
-    // 5. close()
-    close(sock);
 
+    // 5. close() - 소켓 닫기
+    close(sock);
     return 0;
 }

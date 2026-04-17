@@ -9,7 +9,6 @@
 int main(void){
     // 1. socket() - 소켓 생성
     // TCP랑 다르게 SOCK_DGRAM(데이터그램), IPPROTO_UDP 사용
-    // UDP는 연결 없이 독립적인 덩어리 단위로 데이터를 주고받음
     int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock < 0) {
         printf("socket 생성 실패\n");
@@ -17,8 +16,6 @@ int main(void){
     }
 
     // 서버 주소 구조체 채우기
-    // TCP 클라이언트랑 똑같이 어디로 보낼지 주소 정보를 채움
-    // TCP는 이걸 connect()에 넘겼지만 UDP는 sendto()에 직접 넘김
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));  // 쓰레기값 제거
     server_addr.sin_family = AF_INET;              // IPv4 방식으로 통신
@@ -26,19 +23,18 @@ int main(void){
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP
 
     // 2. sendto() - 속도 조절하면서 데이터 전송
-    // TCP와 달리 보낼 때마다 주소를 같이 넘겨야 함
     int speed;
     printf("전송 속도 입력 (500/1000/2000): ");
-    scanf("%d", &speed);  // 실행할 때마다 speed 입력받음
+    scanf("%d", &speed); 
 
     char buf[2000];
     memset(buf, 'A', sizeof(buf));  // buf를 'A'로 채움 (임의의 데이터)
-    int total_bytes = 0;
+    int total_bytes = 0;  // 총 전송 바이트 누적용
 
     struct timeval start, now;
-    gettimeofday(&start, NULL);  // 측정 시작
+    gettimeofday(&start, NULL); 
 
-    for (int i = 0; i < 10; i++) {  // 10초 동안 전송
+    for (int i = 0; i < 100; i++) { 
         int send_result = sendto(sock, buf, speed, 0,
                                 (struct sockaddr*)&server_addr, sizeof(server_addr));
         if (send_result < 0) {
@@ -50,23 +46,26 @@ int main(void){
         // 목표 시간까지 정확하게 대기
         // sleep(1) 대신 usleep으로 오차 방지
         gettimeofday(&now, NULL);
-        double elapsed = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;
-        double target = (i + 1) * 1.0;  // 목표 시간 (1초, 2초, 3초...)
-        if (target > elapsed) {
-            usleep((target - elapsed) * 1000000);  // 남은 시간만큼 대기
+        double pasttime = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;  // 현재까지 경과 시간 (초 단위)
+        double targettime = (i + 1) * 1.0;  // 목표 시간 (1초, 2초, 3초...)
+        if (targettime > pasttime) {
+            usleep((targettime - pasttime) * 1000000); 
         }
     }
 
     // 마지막에 종료 신호 전송
     // TCP는 close()로 서버가 알 수 있지만 UDP는 연결이 없어서 직접 알려줘야 함
-    sendto(sock, "END", 3, 0,
-           (struct sockaddr*)&server_addr, sizeof(server_addr));
 
+    // gettimeofday를 END 전송 전에 찍어야 실제 데이터 전송 시간만 측정
     gettimeofday(&now, NULL);  // 전송 종료 시간 기록
-    double elapsed = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;
+    double totaltime = (now.tv_sec - start.tv_sec) + (now.tv_usec - start.tv_usec) / 1e6;  // 총 경과 시간 계산
+
+    sendto(sock, "END", 3, 0,
+           (struct sockaddr*)&server_addr, sizeof(server_addr));  // 서버에 종료 신호 전송
+
     printf("총 전송 바이트: %d\n", total_bytes);
-    printf("경과 시간: %.2f초\n", elapsed);
-    printf("throughput: %.2f bytes/s\n", total_bytes / elapsed);
+    printf("경과 시간: %.4f초\n", totaltime);
+    printf("throughput: %.4f bytes/s\n", total_bytes / totaltime); 
 
     // 3. close() - 소켓 닫기
     close(sock);

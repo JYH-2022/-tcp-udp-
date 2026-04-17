@@ -8,8 +8,6 @@
 
 int main(void){
     // 1. socket() - 소켓 생성
-    // TCP랑 다르게 SOCK_DGRAM(데이터그램), IPPROTO_UDP 사용
-    // UDP는 연결 없이 독립적인 덩어리 단위로 데이터를 주고받음
     int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock < 0) {
         printf("socket 생성 실패\n");
@@ -30,23 +28,16 @@ int main(void){
         return -2;
     }
 
-    // 처음엔 타임아웃 없이 기다림
-    // 첫 데이터 받기 전까지는 무한정 대기
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
     printf("서버 대기 중...\n");
 
     // 3. recvfrom() - 데이터 수신 후 삭제
     int total_bytes = 0;
-    struct timeval start, end;
+    struct timeval start, end, timeout;  // timeout은 첫 데이터 수신 후 설정용
     struct sockaddr_in client_addr;
-    socklen_t client_addr_size = sizeof(client_addr);
+    socklen_t client_addr_size = sizeof(client_addr);  // recvfrom()에 넘길 구조체 크기
+    char buffer[2000];  // 루프 밖에서 선언 (매 반복마다 재선언 불필요)
 
     while (1) {
-        char buffer[2000];
         memset(buffer, 0, sizeof(buffer));
 
         int recv_result = recvfrom(sock, buffer, sizeof(buffer), 0,
@@ -57,12 +48,11 @@ int main(void){
             gettimeofday(&start, NULL);  // 첫 데이터 받은 시점부터 측정
             timeout.tv_sec = 3;          // 이후부터 3초 타임아웃 적용
             timeout.tv_usec = 0;
-            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)); 
         }
 
-        // 타임아웃 or 에러 → 종료
         if (recv_result <= 0) {
-            printf("타임아웃 or 에러 → 수신 종료\n");
+            printf("타임아웃 or 에러 -> 수신 종료\n");
             break;
         }
 
@@ -75,14 +65,15 @@ int main(void){
         total_bytes += recv_result;  // 수신 바이트 누적
     }
 
-    gettimeofday(&end, NULL);
-    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+    gettimeofday(&end, NULL);  // 수신 종료 시간 기록
+    double totaltime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;  // 총 경과 시간 계산
     printf("수신 완료\n");
-    printf("경과 시간: %.2f초\n", elapsed);
     printf("총 수신 바이트: %d\n", total_bytes);
-    printf("throughput: %.2f bytes/s\n", total_bytes / elapsed);
+    printf("경과 시간: %.4f초\n", totaltime);
+    printf("throughput: %.4f bytes/s\n", total_bytes / totaltime);  // 총 수신 바이트 ÷ 경과 시간
 
     // 4. close() - 소켓 닫기
     close(sock);
+
     return 0;
 }

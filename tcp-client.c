@@ -21,11 +21,10 @@ int main() {
     server_addr.sin_family = AF_INET;              // IPv4 방식으로 통신
     server_addr.sin_port = htons(53140);           // 포트번호
     // 네트워크는 빅 엔디안을 사용하고, 맥/윈도우는 리틀 엔디안을 사용해서 htons로 변환해줌
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP (나한테)
 
     // 3. connect() - 서버에 연결 요청
     // 위에서 채운 주소로 서버에 연결 시도
-    // result에 결과값 저장 → 성공하면 0, 실패하면 -1 반환
     int result = connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
     if (result < 0) 
     {
